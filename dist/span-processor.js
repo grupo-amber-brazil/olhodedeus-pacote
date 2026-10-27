@@ -3,6 +3,7 @@ import { ExportResultCode } from "@opentelemetry/core";
 import { BatchSpanProcessor, } from "@opentelemetry/sdk-trace-base";
 import { getSource, getIngestHost, sendGodeyeBatch, } from "./config.js";
 import { enrichByTrace, setTraceEnrichment } from "./user-context.js";
+import { redisStatementGravavel } from "./redis-statement.js";
 // ── requestHook do HttpInstrumentation ────────────────────────────────────────
 // Captura clientIp/userAgent do IncomingMessage cru (o SERVER span do Next nao
 // expoe headers) e guarda por traceId pro exporter consumir no export().
@@ -155,9 +156,12 @@ export function spanToPayload(span, source) {
     // classificar por db.system / SpanKind / scope sozinho: o Prisma emite varios
     // spans por query e so o db_query tem statement. Deixar os internos passarem
     // viraria evento sem SQL e inflaria o volume ~5x.
-    const statement = (a["db.statement"] ?? a["db.query.text"]);
-    if (span.kind !== SpanKind.SERVER && statement) {
+    const statementCru = (a["db.statement"] ?? a["db.query.text"]);
+    if (span.kind !== SpanKind.SERVER && statementCru) {
         const dbSystem = (a["db.system"] ?? a["db.system.name"]) ?? "db";
+        // Redis: o serializer padrao da IORedisInstrumentation grava os VALORES
+        // (o job inteiro do BullMQ no EVALSHA, com bytes NUL). Ver redis-statement.ts.
+        const statement = dbSystem === "redis" ? redisStatementGravavel(statementCru) : statementCru;
         const exc = exceptionOf(span);
         return {
             source,

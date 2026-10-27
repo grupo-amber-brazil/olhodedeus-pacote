@@ -12,6 +12,32 @@ se for _nenhuma_, atualizar é só trocar a tag (ver
 
 ---
 
+## [0.6.0] — 2026-10-27
+
+**Ação do consumidor: só quem registra a `IORedisInstrumentation`** (hoje, a Mística):
+passar `dbStatementSerializer: redisStatementSerializer`. Os demais só trocam a tag.
+
+### Corrigido
+
+- **🔴 `statement` de Redis com os valores do comando.** O serializer padrão da
+  `IORedisInstrumentation` grava todos os argumentos. No `EVALSHA` do BullMQ isso
+  é o job inteiro em msgpack: dado do job e bytes NUL. O NUL fazia o Postgres do
+  ingest recusar o lote inteiro (`22P05`) e o ingest responder 500 em ~1,2% das
+  requisições da Mística (medido em 27/10/2026, 400 a 650 por hora), levando os
+  `http_out` e `db_query` vizinhos junto. Agora o `span-processor` passa todo
+  statement de Redis por `redisStatementGravavel`: corta os argumentos do
+  `EVALSHA`, troca caractere de controle e metade solta de par UTF-16 por U+FFFD
+  e aplica teto de 300 caracteres.
+
+### Adicionado
+
+- `redisStatementSerializer(cmdName, args)` para a `IORedisInstrumentation`:
+  grava só comando e chaves (`evalsha <sha> 9 bull:openai:wait … [+3 args]`,
+  `set sessao:42 [+3 args]`). É a correção na origem: o valor nem vira atributo
+  do span.
+
+---
+
 ## [0.5.0] — 2026-07-20
 
 **Ação do consumidor: nenhuma** (só trocar a tag). Sem mudança de API.
