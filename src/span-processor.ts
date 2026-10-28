@@ -12,6 +12,7 @@ import {
   getSource,
   getIngestHost,
   sendGodeyeBatch,
+  semDadosPessoais,
   type GodeyePayload,
 } from "./config.js";
 import { enrichByTrace, setTraceEnrichment } from "./user-context.js";
@@ -41,10 +42,18 @@ export function godeyeRequestHook(
   // de BR) e faz a presenca ao vivo contar o proxy, nao o visitante. Fallbacks
   // pra acesso direto (sem CF) ficam depois. Repo sem CF nao tem esse header →
   // cai no x-real-ip/x-forwarded-for como antes (mudanca retrocompativel).
+  //
+  // x-forwarded-for: o ULTIMO item (v0.7.0). Atras de ALB da AWS sem Cloudflare (o caso da maioria dos produtos
+  // desde out/2026) o ALB acrescenta o IP real no fim, e o primeiro item e o que o visitante mandou: forjavel.
+  const xffUltimo = xffStr
+    ?.split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .pop();
   const clientIp =
     (h["cf-connecting-ip"] as string | undefined) ||
     (h["x-real-ip"] as string | undefined) ||
-    xffStr?.split(",")[0]?.trim() ||
+    xffUltimo ||
     (h["fly-client-ip"] as string | undefined) ||
     request.socket?.remoteAddress ||
     undefined;
@@ -177,7 +186,20 @@ function exceptionOf(span: ReadableSpan) {
 // ── classificacao span → payload ────────────────────────────────────────────────
 // Retorna null pra descartar (span interno do ORM sem statement, span-raiz de job
 // do worker, CLIENT do POST de saida, etc).
+//
+// Todo evento sai com dado pessoal mascarado (v0.7.0): e-mail, telefone com 55 e CPF formatado viram `***` em
+// `name`, `path`, `errorMessage`, `errorStack` e nos valores de `metadata` (o statement de SQL inclusive). O erro do
+// Prisma, por exemplo, traz os argumentos da query na mensagem. `userId`, ids de trace, `userAgent` e `clientIp`
+// ficam: o ingest usa o IP para o pais e o descarta.
 export function spanToPayload(
+  span: ReadableSpan,
+  source: string,
+): GodeyePayload | null {
+  const payload = spanToPayloadCru(span, source);
+  return payload ? semDadosPessoais(payload) : null;
+}
+
+function spanToPayloadCru(
   span: ReadableSpan,
   source: string,
 ): GodeyePayload | null {

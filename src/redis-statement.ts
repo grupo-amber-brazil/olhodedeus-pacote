@@ -10,12 +10,20 @@
 //   1. `redisStatementSerializer` — o app passa para a instrumentacao e o valor
 //      nem chega a virar atributo do span. E a correcao de verdade.
 //   2. `redisStatementGravavel` — o span-processor aplica em todo statement de
-//      Redis, para o app que ainda usa o serializer padrao.
+//      Redis, para o app que ainda usa o serializer padrao. Desde a v0.7.0 corta
+//      os valores de TODO comando (nao so do EVALSHA) e mascara dado pessoal nas
+//      chaves (ver dados-pessoais.ts).
 //
-// Arquivo sem dependencia: entra no entry leve (edge-safe).
+// Arquivo sem dependencia externa: entra no entry leve (edge-safe).
 
-/** Teto do statement de Redis gravado. Comando + chaves cabem com folga. */
-export const REDIS_STATEMENT_MAX = 300;
+import {
+  REDIS_ARGS_OMITIDOS,
+  REDIS_STATEMENT_MAX,
+  mascararDadosPessoais,
+  statementRedisSemValores,
+} from "./dados-pessoais.js";
+
+export { REDIS_ARGS_OMITIDOS, REDIS_STATEMENT_MAX };
 
 /** Argumento como a ioredis o recebe. */
 type RedisArg = string | number | Uint8Array | unknown[] | null | undefined;
@@ -63,37 +71,23 @@ export function redisStatementSerializer(cmdName: string, cmdArgs: RedisArg[] = 
 
   const resto = cmdArgs.length - usados;
   if (resto > 0) partes.push(`[+${resto} args]`);
-  return textoLimpo(partes.join(" "));
+  return textoLimpo(mascararDadosPessoais(partes.join(" ")));
 }
-
-/** Marcador do corte do `redisStatementGravavel`: la nao da para contar os ARGV (o valor pode ter espacos). */
-export const REDIS_ARGS_OMITIDOS = "[args omitidos]";
 
 const CONTROLE = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 const SURROGATE_SOLTO = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
 
 /**
  * Defesa do lado de quem emite, para statement que veio do serializer padrao:
- * - `EVALSHA <sha> <n> <chaves...>`: corta tudo depois das chaves (os ARGV);
  * - caractere de controle (inclusive NUL) e metade solta de par UTF-16 viram U+FFFD;
- * - teto de `REDIS_STATEMENT_MAX`.
+ * - fica so o comando e as chaves (`EVALSHA <sha> <n> <chaves...>`; demais comandos, comando + chave) e o resto
+ *   vira `[args omitidos]`. O `EVAL` com script cru sai inteiro: `eval <script> [args omitidos]`;
+ * - dado pessoal na chave vira `***`; teto de `REDIS_STATEMENT_MAX`.
  *
- * O `EVAL` com o serializer padrao nao da para separar (o script tem espacos), entao ele fica so com a limpeza e o
- * teto: quem precisa de garantia passa o `redisStatementSerializer`.
+ * Idempotente, inclusive sobre a saida do `redisStatementSerializer`.
  */
 export function redisStatementGravavel(statement: string): string {
-  let s = statement;
-  const m = /^(evalsha)\s+(\S+)\s+(\d+)\s+/i.exec(s);
-  if (m) {
-    const numKeys = Number(m[3]);
-    const depois = s.slice(m[0].length).split(" ");
-    const chaves = depois.slice(0, numKeys);
-    const cauda = depois.slice(numKeys).join(" ");
-    // Ja veio cortado (do redisStatementSerializer ou de uma passada anterior): mantem.
-    const jaCortado = cauda === "" || /^\[\+\d+ args\]$/.test(cauda) || cauda === REDIS_ARGS_OMITIDOS;
-    s = [m[1], m[2], m[3], ...chaves].join(" ") + (jaCortado ? (cauda ? ` ${cauda}` : "") : ` ${REDIS_ARGS_OMITIDOS}`);
-  }
-  return textoLimpo(s);
+  return statementRedisSemValores(statement.replace(CONTROLE, "�").replace(SURROGATE_SOLTO, "�"));
 }
 
 /** Controle (inclusive NUL) e metade solta de par UTF-16 viram U+FFFD; teto de `REDIS_STATEMENT_MAX`. */

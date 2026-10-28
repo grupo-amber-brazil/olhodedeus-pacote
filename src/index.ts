@@ -10,5 +10,6 @@ export { godeyePrismaExtension } from "./prisma.js";
 export { instrumentPostgresClient } from "./postgres.js";
 export { reportRedisError, createRedisErrorReporter } from "./redis.js";
 export { redisStatementSerializer, redisStatementGravavel, REDIS_STATEMENT_MAX } from "./redis-statement.js";
-export { configureGodeye, getIngestUrl, getSource, sendGodeyeEvent } from "./config.js";
+export { configureGodeye, getIngestUrl, getSource, sendGodeyeEvent, semDadosPessoais } from "./config.js";
+export { mascararDadosPessoais } from "./dados-pessoais.js";
 export type { GodeyeOptions, GodeyePayload } from "./config.js";

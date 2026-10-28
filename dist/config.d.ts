@@ -17,6 +17,11 @@ export declare function getIngestUrl(): string;
  *  emitir http_out da chamada que o pacote faz pro próprio Olho de Deus). */
 export declare function getIngestHost(): string;
 export declare function captureUserEnabled(): boolean;
+export declare function semDadosPessoais(payload: GodeyePayload): GodeyePayload;
+/** Exposto para teste. */
+export declare function pausaDoIngest(): number;
+/** Exposto para teste. */
+export declare function zerarPausaDoIngest(): void;
 export declare function sendGodeyeBatch(payloads: GodeyePayload[]): Promise<void>;
 /** Evento unico fire-and-forget (job, startup ping, redis-error). Nao espera. */
 export declare function sendGodeyeEvent(event: GodeyePayload): void;

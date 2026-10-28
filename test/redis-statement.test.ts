@@ -66,7 +66,7 @@ test("gravavel e idempotente, inclusive sobre a saida do serializer", () => {
 test("gravavel: controle e metade solta de par UTF-16 viram U+FFFD; teto aplicado", () => {
   assert.equal(redisStatementGravavel("get a\u0000b"), "get a�b");
   assert.equal(redisStatementGravavel("get a\uD800"), "get a�");
-  const longo = redisStatementGravavel(`eval ${"x".repeat(5000)}`);
+  const longo = redisStatementGravavel(`get ${"x".repeat(5000)}`);
   assert.equal(longo.length, REDIS_STATEMENT_MAX + 1);
   assert.ok(longo.endsWith("…"));
 });
