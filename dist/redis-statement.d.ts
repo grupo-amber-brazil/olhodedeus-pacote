@@ -1,5 +1,5 @@
-/** Teto do statement de Redis gravado. Comando + chaves cabem com folga. */
-export declare const REDIS_STATEMENT_MAX = 300;
+import { REDIS_ARGS_OMITIDOS, REDIS_STATEMENT_MAX } from "./dados-pessoais.js";
+export { REDIS_ARGS_OMITIDOS, REDIS_STATEMENT_MAX };
 /** Argumento como a ioredis o recebe. */
 type RedisArg = string | number | Uint8Array | unknown[] | null | undefined;
 /**
@@ -15,16 +15,13 @@ type RedisArg = string | number | Uint8Array | unknown[] | null | undefined;
  * Exemplo: `evalsha e33b... 9 bull:openai:wait ... bull:openai:marker [+12 args]`.
  */
 export declare function redisStatementSerializer(cmdName: string, cmdArgs?: RedisArg[]): string;
-/** Marcador do corte do `redisStatementGravavel`: la nao da para contar os ARGV (o valor pode ter espacos). */
-export declare const REDIS_ARGS_OMITIDOS = "[args omitidos]";
 /**
  * Defesa do lado de quem emite, para statement que veio do serializer padrao:
- * - `EVALSHA <sha> <n> <chaves...>`: corta tudo depois das chaves (os ARGV);
  * - caractere de controle (inclusive NUL) e metade solta de par UTF-16 viram U+FFFD;
- * - teto de `REDIS_STATEMENT_MAX`.
+ * - fica so o comando e as chaves (`EVALSHA <sha> <n> <chaves...>`; demais comandos, comando + chave) e o resto
+ *   vira `[args omitidos]`. O `EVAL` com script cru sai inteiro: `eval <script> [args omitidos]`;
+ * - dado pessoal na chave vira `***`; teto de `REDIS_STATEMENT_MAX`.
  *
- * O `EVAL` com o serializer padrao nao da para separar (o script tem espacos), entao ele fica so com a limpeza e o
- * teto: quem precisa de garantia passa o `redisStatementSerializer`.
+ * Idempotente, inclusive sobre a saida do `redisStatementSerializer`.
  */
 export declare function redisStatementGravavel(statement: string): string;
-export {};

@@ -1,7 +1,7 @@
 import { SpanKind } from "@opentelemetry/api";
 import { ExportResultCode } from "@opentelemetry/core";
 import { BatchSpanProcessor, } from "@opentelemetry/sdk-trace-base";
-import { getSource, getIngestHost, sendGodeyeBatch, } from "./config.js";
+import { getSource, getIngestHost, sendGodeyeBatch, semDadosPessoais, } from "./config.js";
 import { enrichByTrace, setTraceEnrichment } from "./user-context.js";
 import { redisStatementGravavel } from "./redis-statement.js";
 // ── requestHook do HttpInstrumentation ────────────────────────────────────────
@@ -24,9 +24,17 @@ export function godeyeRequestHook(span, request) {
     // de BR) e faz a presenca ao vivo contar o proxy, nao o visitante. Fallbacks
     // pra acesso direto (sem CF) ficam depois. Repo sem CF nao tem esse header →
     // cai no x-real-ip/x-forwarded-for como antes (mudanca retrocompativel).
+    //
+    // x-forwarded-for: o ULTIMO item (v0.7.0). Atras de ALB da AWS sem Cloudflare (o caso da maioria dos produtos
+    // desde out/2026) o ALB acrescenta o IP real no fim, e o primeiro item e o que o visitante mandou: forjavel.
+    const xffUltimo = xffStr
+        ?.split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .pop();
     const clientIp = h["cf-connecting-ip"] ||
         h["x-real-ip"] ||
-        xffStr?.split(",")[0]?.trim() ||
+        xffUltimo ||
         h["fly-client-ip"] ||
         request.socket?.remoteAddress ||
         undefined;
@@ -143,7 +151,16 @@ function exceptionOf(span) {
 // ── classificacao span → payload ────────────────────────────────────────────────
 // Retorna null pra descartar (span interno do ORM sem statement, span-raiz de job
 // do worker, CLIENT do POST de saida, etc).
+//
+// Todo evento sai com dado pessoal mascarado (v0.7.0): e-mail, telefone com 55 e CPF formatado viram `***` em
+// `name`, `path`, `errorMessage`, `errorStack` e nos valores de `metadata` (o statement de SQL inclusive). O erro do
+// Prisma, por exemplo, traz os argumentos da query na mensagem. `userId`, ids de trace, `userAgent` e `clientIp`
+// ficam: o ingest usa o IP para o pais e o descarta.
 export function spanToPayload(span, source) {
+    const payload = spanToPayloadCru(span, source);
+    return payload ? semDadosPessoais(payload) : null;
+}
+function spanToPayloadCru(span, source) {
     const a = span.attributes;
     // Span-raiz que o worker abre em volta de cada job (so pras queries herdarem o
     // trace). O evento type:"job" e emitido a mao pelo job-wrapper — descartar aqui
