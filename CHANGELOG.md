@@ -12,6 +12,34 @@ se for _nenhuma_, atualizar é só trocar a tag (ver
 
 ---
 
+## [0.7.0] — 2026-10-28
+
+**Ação do consumidor: nenhuma** (só trocar a tag). Quem registra a `IORedisInstrumentation` continua
+devendo passar o `redisStatementSerializer`, mas sem ele os valores já não saem.
+
+### Corrigido
+
+- **🔴 Dado pessoal de lead na telemetria.** Em 28/10/2026 a Mística (v0.5.0, sem o serializer)
+  gravava o job inteiro do BullMQ no `statement` do `EVALSHA`: 39,7 mil linhas em 30 h, ~7 mil com
+  telefone e ~6,7 mil com e-mail, que seguiam para o arquivo Parquet. Agora:
+  - `redisStatementGravavel` corta os valores de **todo** comando Redis, não só do `EVALSHA`
+    (`set sessao:42 [args omitidos]`, `eval <script> [args omitidos]`);
+  - e-mail, telefone com 55 e CPF formatado viram `***` em `name`, `path`, `errorMessage`,
+    `errorStack` e nos valores de `metadata`, nos spans e no `sendGodeyeEvent`. `userId`, ids de
+    trace, `userAgent` e `clientIp` ficam;
+  - o serializer também mascara telefone nas chaves (`inbound:rl:janela:***`).
+- **IP do visitante forjável.** Sem Cloudflare nem `x-real-ip`, o `requestHook` lia o **primeiro**
+  item do `X-Forwarded-For`, que o visitante manda. Atrás do ALB da AWS o real é o **último**.
+
+### Adicionado
+
+- **O 429 do ingest pausa o envio** do processo até vencer o `Retry-After` (60 s sem o header, teto
+  de 1 h), e o que surge na pausa é descartado. Molde do Sentry: o SDK não reenvia, para de enviar.
+  Antes o pacote tratava 429 como sucesso e seguia no mesmo ritmo.
+- `mascararDadosPessoais` e `semDadosPessoais` exportados, para evento montado à mão.
+
+---
+
 ## [0.6.0] — 2026-10-27
 
 **Ação do consumidor: só quem registra a `IORedisInstrumentation`** (hoje, a Mística):

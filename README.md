@@ -12,7 +12,7 @@ bug vive **aqui**, não em 5 repos.
 ## Instalar
 
 ```bash
-pnpm add github:amber-brazil/olhodedeus-pacote#v0.5.0
+pnpm add github:grupo-amber-brazil/olhodedeus-pacote#v0.7.0
 ```
 
 O `@opentelemetry/api` é peer dep — projetos Next normalmente já têm. Se faltar:
@@ -111,19 +111,28 @@ registerInstrumentations({
 ```
 
 ⚠️ Sem o serializer, a instrumentação grava os **valores**: no `EVALSHA` do BullMQ, o job inteiro em
-msgpack, com bytes NUL. O pacote corta os argumentos do `EVALSHA` e limpa o texto como defesa
-(`redisStatementGravavel`), mas o `EVAL` com script não dá para separar e só sai limpo e cortado em
-300 caracteres.
+msgpack, com bytes NUL e dado da lead. Desde a v0.7.0 o pacote corta os valores de **todo** comando
+como defesa (`redisStatementGravavel`): fica o comando e as chaves, e o `EVAL` com script cru sai como
+`eval <script> [args omitidos]`. O serializer continua sendo a correção na origem.
 
 ## Princípios
 
+- **O Sentry é a referência.** Antes de mudar o que o pacote coleta, como limpa dado ou como reage ao
+  ingest, conferir na doc oficial do Sentry como ele faz e seguir o mesmo modelo; desvio só com motivo
+  escrito aqui e no CHANGELOG. Exemplos já seguidos: query parametrizada sem valores, limpeza na origem
+  e de novo no servidor, e o emissor que para de enviar no 429 até vencer o `Retry-After`.
 - **Fire-and-forget:** nunca bloqueia o request. Timeout duro de 500ms. Nunca lança.
+- **429 do ingest pausa o envio** do processo até vencer o `Retry-After` (60 s sem o header). O que
+  surge na pausa é descartado: sem fila, sem reenvio.
 - **Sem token → no-op.** Adicionar o pacote não muda nada até `GODEYE_TOKEN` existir — é
   aditivo e não gera regressão.
 - **PII:** só a **forma** do SQL (`WHERE id = $1`, `user.findUnique`) e do comando Redis
   (comando + chaves, com o `redisStatementSerializer`), nunca os valores.
   userId é só o **id** canônico, nunca nome/email. Valor de parâmetro sensível na
-  query string é redigido (`?secret=***`) antes de sair da máquina.
+  query string é redigido (`?secret=***`) antes de sair da máquina. Desde a v0.7.0,
+  e-mail, telefone com 55 e CPF formatado viram `***` em `name`, `path`, `errorMessage`,
+  `errorStack` e `metadata` (o erro do Prisma traz os argumentos da query na mensagem).
+  O ingest repete a mesma limpeza antes de gravar (`src/dados-pessoais.ts`, espelhado).
 - **DB via Prisma extension**, não `@prisma/instrumentation` (que quebra sob OTel SDK 2.x).
 - **Nunca emitir payload que o ingest rejeita.** O ingest valida item a item desde
   julho de 2026, e desde outubro regrava item a item o lote que o banco recusa: um
@@ -141,7 +150,7 @@ testar função pura. Testes em `test/`, saída em `.test-out/` (gitignored).
 
 ## Status
 
-`v0.6` — HTTP (entrada e saída), `db_query`, Redis, jobs e `userId` em produção nos
+`v0.7` — HTTP (entrada e saída), `db_query`, Redis, jobs e `userId` em produção nos
 repos da Amber. `userId` usa o map por `traceId` e **não funciona em pages-router**
 (webhook-first): o span SERVER não fica ativo dentro do handler. Vínculo continua
 possível pelo `traceId` via `db_query`. Endurecimento por OTel baggage e dedup dos

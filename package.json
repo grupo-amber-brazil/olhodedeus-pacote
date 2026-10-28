@@ -1,6 +1,6 @@
 {
   "name": "@amber/olho-de-deus",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Instrumentacao OTel do Olho de Deus (observabilidade interna Amber) — HTTP + DB + Redis + jobs + userId num pacote. Substitui o snippet bespoke por repo.",
   "type": "module",
   "license": "UNLICENSED",
